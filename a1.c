@@ -40,7 +40,61 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Variables for timing and analysis
+  double sumC = 0.0; 
+  double maxC = 0.0; 
+  long long checksum = 0;
 
+  double start_time, kernel_time, total_time;
+
+  start_time = omp_get_wtime(); // Start timing
+
+  if (mode == 0) {
+    // Mode 0: Standard matrix multiplication, triple loop for 1D array
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
+        double temp = 0.0;
+        for (int k = 0; k < N; k++) {
+          // A[i][k] * B[k][j] mapped to 1D array indices
+          temp += A[i * N + k] * B[k * N + j];
+        }
+        C[i * N + j] = temp;
+      }
+    }
+
+    // Record time taken for kernel execution
+    kernel_time = omp_get_wtime() - start_time;
+
+    // Calculate sum, max, and checksum for C
+    maxC = C[0]; // Initialize maxC to the first element of C
+
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
+        double value = C[i * N + j];
+        sumC += value; // Accumulate sum of elements in C
+        if (value > maxC) {
+          maxC = value; // Update maxC if current value is greater
+        }
+        // checksum as per the assignment formula
+        checksum += (long long)(value * 1000.0) % 100000; 
+      }
+    }
+
+    // Record total time taken for the entire operation
+    total_time = omp_get_wtime() - start_time;
+
+    // Print results
+    printf("Mode: 0 (Serial Baseline)\n");
+    printf("Threads: 1\n");
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
+  }
+  else if (mode == 1) {
+    
+  }
 
   // Free allocated memory
   free(A);
