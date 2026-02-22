@@ -93,7 +93,50 @@ int main(int argc, char *argv[]) {
     printf("checksum: %lld\n", checksum);
   }
   else if (mode == 1) {
-    
+    // Mode 1: OpenMP threads (Work sharing loops + correct scoping)
+    // Change schedule to (dynamic, 16) to test dynamic scheduling with a chunk size of 16
+    int i, j, k; // Declare loop variables for private scope
+    #pragma omp parallel for default(none) shared(A, B, C, N) private(i, j, k) schedule(dynamic, 16)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double temp = 0.0;
+        for (k = 0; k < N; k++) {
+          temp += A[i * N + k] * B[k * N + j];
+        }
+        C[i * N + j] = temp;
+      }
+    }
+    kernel_time = omp_get_wtime() - start_time;
+
+    // Analytics with reductions for sum and max
+    // sumC and maxC are shared, val is private to each thread
+    #pragma omp parallel for default(none) shared(C, N) private(i, j) reduction(+:sumC) reduction(max:maxC)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double val = C[i * N + j];
+        sumC += val; // Accumulate sum of elements in C
+        if (val > maxC) maxC = val; // Update maxC if current value is greater
+      }
+    }
+
+    // Checksum using atomic as a baseline for Mode 1
+    #pragma omp parallel for default(none) shared(C, N, checksum) private(i, j) 
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
+        long long local_val = (long long)(C[i * N + j] * 1000.0) % 100000;
+        #pragma omp atomic
+        checksum += local_val; // Update checksum atomically
+      }
+    }
+    total_time = omp_get_wtime() - start_time;  
+
+    printf("Mode: 1 (OpenMP Threads)\n");
+    printf("Threads: %d\n", omp_get_max_threads());
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
   }
 
   // Free allocated memory
