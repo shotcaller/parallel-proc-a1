@@ -182,6 +182,193 @@ int main(int argc, char *argv[]) {
     printf("maxC: %f\n", maxC);
     printf("checksum: %lld\n", checksum);
   }
+  else if (mode == 3) {
+    // Mode 3: OpenMP Synchonization comparison with atomics and critical sections
+    int i, j, k; // Declare loop variables for private scope
+    #pragma omp parallel for default(none) shared(A, B, C, N) private(i, j, k)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double temp = 0.0;
+        for (k = 0; k < N; k++) {
+          temp += A[i * N + k] * B[k * N + j];
+        }
+        C[i * N + j] = temp;
+      }
+    }
+    kernel_time = omp_get_wtime() - start_time;
+
+    // Analytics with reductions for sum and max
+    #pragma omp parallel for default(none) shared(C, N) private(i, j) reduction(+:sumC) reduction(max:maxC)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double val = C[i * N + j];
+        sumC += val;
+        if (val > maxC) maxC = val;
+      }
+    }
+
+    // Checksum for modes 3A and 3B
+    #pragma omp parallel for default(none) shared(C, N, checksum) private(i, j)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        long long local_val = (long long)(C[i * N + j] * 1000.0) % 100000;
+        // For Mode 3A, use atomic to update checksum
+        #pragma omp atomic
+        checksum += local_val;
+        // For Mode 3B, use critical section to update checksum
+        
+        // #pragma omp critical
+        // {
+        //   checksum += local_val;
+        // }
+        
+      }
+    }
+    total_time = omp_get_wtime() - start_time;
+
+    printf("Mode: 3 (OpenMP Synchronization (Atomic vs Critical in checksum))\n");
+    printf("Threads: %d\n", omp_get_max_threads());
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
+  }
+  else if (mode == 4) {
+    // Mode 4: Task based parallelism with OpenMP tasks
+    #pragma omp parallel 
+    {
+      // Single thread creates tasks for matrix multiplication
+      #pragma omp single 
+      {
+        // Taskgroup to ensure all tasks are completed before proceeding to analytics
+        #pragma omp taskgroup 
+        {
+          for (int row = 0; row < N; row++) {
+            // Create a task for each row of the result matrix C
+            #pragma omp task firstprivate(row) shared(A, B, C, N) 
+            {
+              for (int col = 0; col < N; col++) {
+                double temp = 0.0;
+                for (int k = 0; k < N; k++) {
+                  temp += A[row * N + k] * B[k * N + col];
+                }
+                C[row * N + col] = temp;
+              }
+            }
+          }
+        } // End of taskgroup, ensures all multiplication tasks are completed
+      } 
+    }
+    kernel_time = omp_get_wtime() - start_time;
+
+    // Analytics with reductions for sum and max
+    int i, j; // Declare loop variables for private scope
+    #pragma omp parallel for default(none) shared(C, N) private(i, j) reduction(+:sumC) reduction(max:maxC)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double val = C[i * N + j];
+        sumC += val;
+        if (val > maxC) maxC = val;
+      }
+    }
+
+    // Checksum using atomic for consistency for Mode 4
+    #pragma omp parallel for default(none) shared(C, N, checksum) private(i, j)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        long long local_val = (long long)(C[i * N + j] * 1000.0) % 100000;
+        #pragma omp atomic
+        checksum += local_val;
+      }
+    }
+    total_time = omp_get_wtime() - start_time;
+
+    printf("Mode: 4 (OpenMP Task-based Parallelism)\n");
+    printf("Threads: %d\n", omp_get_max_threads());
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
+  }
+  else if (mode == 5) {
+    // Mode 5: SIMD vectorization with single thread
+    for (int i = 0; i < N; i++) {
+      for (int j = 0; j < N; j++) {
+        double temp = 0.0;
+        // Using OpenMP simd directive to vectorize the innermost loop
+        #pragma omp simd reduction(+:temp)
+        for (int k = 0; k < N; k++) {
+          temp += A[i * N + k] * B[k * N + j];
+        }
+        C[i * N + j] = temp;
+      }
+    }
+    kernel_time = omp_get_wtime() - start_time;
+
+    // SIMD analytics with reductions for sum and max
+    #pragma omp simd reduction(+:sumC) reduction(max:maxC)
+    for (int x = 0; x < N * N; x++) {
+      double val = C[x];
+      sumC += val;
+      if (val > maxC) maxC = val;
+    }
+
+    // SIMD checksum
+    #pragma omp simd reduction(+:checksum)
+    for (int x = 0; x < N * N; x++) {
+      checksum += (long long)(C[x] * 1000.0) % 100000;
+    }
+    total_time = omp_get_wtime() - start_time;
+
+    printf("Mode: 5 (SIMD Vectorization)\n");
+    printf("Threads: 1 (SIMD)\n");
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
+  }
+  else if (mode == 6) {
+    // Mode 6: Threads + SIMD
+    int i, j, k;
+    #pragma omp parallel for default(none) shared(A, B, C, N) private(i, j, k)
+    for (i = 0; i < N; i++) {
+      for (j = 0; j < N; j++) {
+        double temp = 0.0;
+        #pragma omp simd reduction(+:temp)
+        for (k = 0; k < N; k++) {
+          temp += A[i * N + k] * B[k * N + j];
+        }
+        C[i * N + j] = temp;
+      }
+    }
+    kernel_time = omp_get_wtime() - start_time;
+
+    // Analytics with reductions for sum and max
+    #pragma omp parallel for simd reduction(+:sumC) reduction(max:maxC)
+    for (int x = 0; x < N * N; x++) {
+      double val = C[x];
+      sumC += val;
+      if (val > maxC) maxC = val;
+    }
+
+    // SIMD checksum with reduction
+    #pragma omp parallel for simd reduction(+:checksum)
+    for (int x = 0; x < N * N; x++) {
+      checksum += (long long)(C[x] * 1000.0) % 100000;
+    }
+    total_time = omp_get_wtime() - start_time;
+
+    printf("Mode: 6 (Threads + SIMD)\n");
+    printf("Threads: %d\n", omp_get_max_threads());
+    printf("Kernel Time: %f s\n", kernel_time);
+    printf("Total Time: %f s\n", total_time);
+    printf("sumC: %f\n", sumC);
+    printf("maxC: %f\n", maxC);
+    printf("checksum: %lld\n", checksum);
+  }
 
   // Free allocated memory
   free(A);
